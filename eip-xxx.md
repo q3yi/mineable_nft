@@ -1,24 +1,28 @@
-| eip | title | author                                                           | discussions-to | status | type            | category | created   |
-|     |       | Jeff Huang<jeffishjeff@gmail.com>, Qing Yi<qingyi.tss@gmail.com> |                | Draft  | Standards Track | ERC      | 2021-7-16 |
+---
+eip:
+title:
+author: Jeff Huang<jeffishjeff@gmail.com>, Qing Yi<qingyi.tss@gmail.com>
+discussions-to:
+status: Draft
+type: Standards Track
+category: ERC
+created: 2021-7-16
+---
 
 # 目前还剩下的问题
 
-- [ ] 是否支持批量的更改masks
+- [ ] 只提供一个`getMasks`的接口还是提供`getMaskByID`+`getMaskIDs`两个
+      接口
+	  
+  只用一个接口`getMasks`返回所有的mask，好处是一步到位，坏处是每次都更
+  新全部，如果大部分mask比较稳定就比较浪费。
+  
+  用`getMaskByID`+`getMaskIDs`两个接口的话比较利于用户更小范围的控制，
+  比如他只想挖特定mask下的NFT就只需要更新相应mask就好了。
 
-  目前的方案是不支持，现在修改mask的接口addMask，removeMask都是一个一
-  个的增删，这样可以确保每次操作产生的event比较少，当然如果支持批量操
-  作的话也可以在一个修改产生event中包含多个mask，`event
-  MasksChanged(uint256[] memory masks)`, 但目前不确定memory类型的event
-  参数有什么印象。
+- [ ] maskID暂时设置的type为uint32，或许可以改成uint64或uint256？
 
-- [ ] challengeNumber是否应该规定一个自动修改的规则
-
-  为了保证不会有人提前算好符合某种格式的hash，每次在计算hash的时候要包
-  含用户提供的nonce，和合约自身维护的challengeNumber，这个
-  challengeNumber需要定期的更换，但现在没有定义更换的逻辑，我倾向于这
-  段逻辑个合约的实现者决定
-
-- [ ] 没有问题的话需要翻译成英文
+- [ ] mask是否有更贴切的名字？
 
 # Simple Summary
 
@@ -42,145 +46,169 @@ tokenID本身就是一种数字财产，表示特定用户在合约中对某个�
 
 # Sepcification
 
-本接口是EIP-721接口的拓展接口，只负责解决NFT如何产生的问题，在实际的合
-约中应该需要包含NFT的交换相关功能，也就是说实际合约应当同时实现EIP-721
-中的相关接口。
+本接口是EIP-721接口的拓展接口，只负责解决NFT如何产生的问题，所有NFT交
+换功能应当遵循EIP-721接口的规范实现。
 
 ## Interface
 
 ```sodility
 pragma solidity >=0.7.0;
 
+// @notice defination of mask object
+struct Mask {
+    uint32 id;
+    uint256 pattern;
+    bytes32 challengeNumber;
+}
+    
+    
 /// @title ERC-xxx Mineable Non-Fungible Token Standard
 /// @dev See https://eips.ethereum.org/EIPS/eip-xxx
 interface ERCxxx /* is ERC721 */ {
 
-    /// @notice Add new mask to current pool
-    /// @param mask owner defined mask
-    function addMask(uint256 mask) external;
-
-    /// @notice Remove a mask from current pool
-    /// @param index of mask that will be removed
-    function removeMask(uint32 index) external;
+    /// @notice Get all masks' id as a list
+    /// @return list of mask id
+    function getMaskIDs() external view returns (uint32[] memory);
+    
+    /// @notice Get mask object by given id
+    /// @return mask object
+    function getMaskByID(uint32 id) external view returns (Mask memory);
 
     /// @notice Get all masks currently available for mining
     /// @return list of available mask
-    function getMasks() external view returns (uint256[] memory);
-
-    /// @notice Get current challenge number
-    /// @return current challenge number
-    function getChallengeNumber() external view returns (bytes32);
+    function getMasks() external view returns (Mask[] memory);
 
     /// @notice The mint operation
-    /// @param nonce
-    /// @return flag indicating a successful hash digest verification
-    function mint(uint256 nonce) external returns (bool);
-
-    /// @dev This emits when new mask add to current pool by whoever has privilege
-    event MaskAdded(uint256 mask);
-
-    /// @dev This emits when a mask has been removed from pool by whoever has privilege
-    event MaskRemoved(uint256 mask);
-
-    /// @dev This emits when new challenge number has been generated
-    event ChallengeNumberChanged(bytes32 challengeNumber);
+    function mint(uint32 maskID, uint256 nonce) external;
 
     /// @dev This emits when a new nft has been assigned to worker
-    event Mint(address indexed from, uint256 nft, bytes32 challengeNumber);
+    event Mint(address indexed from, uint256 nft, uint256 mask, bytes32 challengeNumber);
 }
 ```
 
-## Abstract Contract(optional)
-
-所有实现ERCxxx接口的合约都建议维护一下两个内部变量，以保证合约的正常运
-行。
-
-### challengeNumber
-
-为了确保矿工无法提前计算符合某种特定模式的NFT，在计算hash值是需要用户
-提供的nonce+当前合约中的challengeNumber一起之后计算。challengeNumber应
-该以一种特定的规则更新，本接口没有做特定的规约，实际的合约创建者应当自
-行规定，可以根据规则自动更新，也可以由合约所有者手动更新。这里的例子
-（TODO：添加例子连接）提供了一种在增加或删除mask时自动更新的机制。
+### Mask
 
 ```solidity
-bytes32 internal challengeNumber;
+struct Mask {
+    uint32 id;
+    uint256 pattern;
+    bytes32 challengeNumber;
+}
+
+Mask[] internal masks
 ```
 
-另外需要注意的是，challengeNumber在合约部署或者在正式挖矿启动时，应当
-确保challengeNumber被正确的赋值，不应该为空值。
+`Mask`代表了一个可供挖掘的NFT模式，包含三个字段：
 
-### nftOwners
+- `uint32 id`
 
-确保每个NFT只有一个并且只能被挖掘一次。
+	mask的唯一id，用来表示相应的一组可供挖掘的NFT模式。
+	
+- `uint256 pattern`
+
+	表示用户提供的nonce经过计算的hash应当符合的模式。
+	
+- `bytes32 challengenumber`
+
+	为了确保矿工无法提前计算符合某种特定模式的NFT，在计算hash值是需要
+	用户提供的nonce+和mask中对应的challengeNumber一起之后计算。
+	challengeNumber应该以一种特定的规则更新，本接口没有做特定的规约，
+	实际的合约创建者应当自行规定，可以根据规则自动更新，也可以由合约所
+	有者手动更新。
+
+### getMaskIDs
+
+返回目前所有的mask的id。没有任何mask时返回空数组。
 
 ```solidity
-mapping(uint256 => address) public nftOwners;
+function getMaskIDs() external view returns (uint32[] memory);
 ```
 
-### masks
+### getMaskByID
 
-所有目前可供挖掘的NFT的模式的集合，用户提供的nonce和合约的
-challengeNumber结合在一起计算出的hash为一个可以分配给矿工的NFT，如果
-hash满足masks中某一个mask所规定的模式，并且在之前没有被任何人挖到过，
-则挖矿成功，否者挖矿失败。
+根据mask id获取对应的mask对象。不存在时抛出异常。
 
 ```solidity
-uint256[] internal masks;
+function getMaskByID(uint32 id) external view returns (Mask memory);
 ```
 
-和challengeNumber相同，masks在正式挖矿开始时，应当确保被正确的赋值，否
-者挖矿的验证机制应该永远失败。
+### getMasks
+
+返回所有的mask对象数组，不存在时返回空数组。
+
+```solidity
+function getMasks() external view returns (Mask[] memory);
+```
+
+### mint
+
+挖矿的接口，提供mask id和用户计算出的nonce，合约验证成功则发放nft，否
+则函数抛出异常。
+	
+```solidity
+mint(uint32 maskID, uint256 nonce) external;
+```
+
+### Mint
+
+产生一个新NFT时触发的事件。
+
+- mask为产生nft时使用的mask pattern
+
+- challengeNumber时使用的mask challengeNumber
+
+```solidity
+event Mint(address indexed from, uint256 nft, uint256 mask, bytes32 challengeNumber);
+```
 
 ## Mint operation
 
 ```solidity
-function hash(uint256 nonce) internal returns (uint256) {
-    return uint256(keccak256(abi.encodePacked(challengeNumber, msg.sender, nonce)));
-}
+function mint(uint32 maskID, uint256 nonce) external override {
 
-function matchMasks(uint256 nft) internal returns (bool) {
-    for (uint i=0; i < masks.length; i++) {
-        if(masks[i] | digest == masks[i]) {
-            return true;
-        }
-    }
-    return false;
-}
+	Mask memory m = masks.get(maskID);
+	require(m.id != 0, "mask not found");
+        
+	// Calculate NTF
+	uint256 digest = uint256(keccak256(abi.encodePacked(m.challengeNumber, nonce)));
 
-function mint(uint256 nonce) external override {
-    // Calculate NTF
-    uint256 digest = hash(nonce);
+	// Ensure NFT is not mint already
+	require(!nfts.isExists(digest), "already mint by other");
 
-    // Ensure NFT is not mint already
-    require(notMintByOther(digest), "already mint by other");
+	// Test if digest match target mask pattern
+	require(m.pattern | digest == m.pattern, "not match");
 
-    // Match NFT in mask pool
-    require(matchMasks(digest), "not match any masks");
+	// Issue NFT to worker
+	nfts.issue(msg.sender, digest);
 
-    // Issue NFT to worker
-    reward(digest);
-
-    // Emit event
-    emit Mint(msg.sender, digest, challengeNumber);
+	// Emit event
+	emit Mint(msg.sender, digest, m.pattern, m.challengeNumber);
 }
 ```
 
 ## Example mining function
 
 ```python3
+Mask = namedtuple("Mask", "id pattern challenge_number")
+
+masks = [
+    Mask(1, 2**240-1, "5687febf410591227276fb47b859d185cc30cbfd06811a2cd9cfd17d041af1af")
+]
+
 def mine():
 
     while True:
         nonce = random.getrandbits(256)
-        raw = challenge_number + nonce.to_bytes(32, 'big')
-
-        hash_value = sha3.keccak_256(raw)
-        digest_number = int.from_bytes(hash_value.digest(), 'big')
 
         for m in masks:
-            if m | digest_number == m:
-                return nonce, hash_value.hexdigest()
+            challenge_number = binascii.unhexlify(m.challenge_number)
+            raw = challenge_number + nonce.to_bytes(32, 'big')
+
+            hash_value = sha3.keccak_256(raw)
+            digest_number = int.from_bytes(hash_value.digest(), 'big')
+
+            if m.pattern | digest_number == m.pattern:
+                return m.id, nonce, hash_value.hexdigest()
 ```
 
 # Rationable

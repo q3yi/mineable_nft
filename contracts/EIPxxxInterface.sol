@@ -1,37 +1,32 @@
 pragma solidity >=0.7.0;
 
+// @notice defination of mask object
+struct Mask {
+    uint32 id;
+    uint256 pattern;
+    bytes32 challengeNumber;
+}
+    
+    
 /// @title ERC-xxx Mineable Non-Fungible Token Standard
 /// @dev See https://eips.ethereum.org/EIPS/eip-xxx
 interface ERCxxx /* is ERC721 */ {
 
-    /// @notice Add new mask to current pool
-    /// @param mask owner defined mask
-    function addMask(uint256 mask) external;
-
-    /// @notice Remove a mask from current pool
-    /// @param index of mask that will be removed
-    function removeMask(uint32 index) external;
+    /// @notice Get all masks' id as a list
+    /// @return list of mask id
+    function getMaskIDs() external view returns (uint32[] memory);
+    
+    /// @notice Get mask object by given id
+    /// @return mask object
+    function getMaskByID(uint32 id) external view returns (Mask memory);
 
     /// @notice Get all masks currently available for mining
     /// @return list of available mask
-    function getMasks() external view returns (uint256[] memory);
-
-    /// @notice Get current challenge number
-    /// @return current challenge number
-    function getChallengeNumber() external view returns (bytes32);
+    function getMasks() external view returns (Mask[] memory);
 
     /// @notice The mint operation
-    function mint(uint256 nonce) external;
-
-    /// @dev This emits when new mask add to current pool by whoever has privilege
-    event MaskAdded(uint256 mask);
-
-    /// @dev This emits when a mask has been removed from pool by whoever has privilege
-    event MaskRemoved(uint256 mask);
-
-    /// @dev This emits when new challenge number has been generated
-    event ChallengeNumberChanged(bytes32 challengeNumber);
+    function mint(uint32 maskID, uint256 nonce) external;
 
     /// @dev This emits when a new nft has been assigned to worker
-    event Mint(address indexed from, uint256 nft, bytes32 challengeNumber);
+    event Mint(address indexed from, uint256 nft, uint256 mask, bytes32 challengeNumber);
 }
