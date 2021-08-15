@@ -4,57 +4,42 @@ import "./EIPxxxInterface.sol";
 
 library MaskMap {
     struct Pool {
-        Mask[] _values;
-        mapping(uint32 => uint256) _positions;
+        bytes32[] _challengeNumbers;
+        mapping(bytes32 => uint256) _masks;
     }
     
-    function get(Pool storage map, uint32 id) internal view returns (Mask memory) {
-        uint256 idx = map._positions[id];
-        if (idx == 0) {
-            return Mask(0, 0, 0);
-        } else {
-            return map._values[idx-1];
+    function get(Pool storage map, bytes32 challengeNumber) internal view returns (uint256) {
+        return map._masks[challengeNumber];
+    }
+    
+    function set(Pool storage map, bytes32 challengeNumber, uint256 mask) internal {
+        if (map._masks[challengeNumber] == 0 ) {
+            map._challengeNumbers.push(challengeNumber);
         }
+        
+        map._masks[challengeNumber] = mask;
     }
     
-    function set(Pool storage map, uint32 id, Mask memory mask) internal {
-        uint256 idx = map._positions[id];
-        if (idx == 0) {
-            map._values.push(mask);
-            map._positions[id] = map._values.length;
-        } else {
-            map._values[idx - 1] = mask;
-        }
-    }
-    
-    function del(Pool storage map, uint32 id) internal {
-        uint256 idx = map._positions[id];
-        if (idx != 0) {
-            idx = idx - 1;
-            map._values[idx] = map._values[map._values.length-1];
-            map._values.pop();
-            map._positions[id] = 0;
-            
-            if (map._values.length != 0) {
-                map._positions[map._values[idx].id] = idx + 1;
+    function del(Pool storage map, bytes32 challengeNumber) internal {
+        map._masks[challengeNumber] = 0;
+        for (uint32 i = 0; i < map._challengeNumbers.length; i++ ) {
+            if (map._challengeNumbers[i] == challengeNumber) {
+                map._challengeNumbers[i] = map._challengeNumbers[map._challengeNumbers.length - 1];
+                map._challengeNumbers.pop();
             }
         }
     }
     
-    function values(Pool storage map) internal view returns (Mask[] memory) {
-        return map._values;
+    function challengeNumbers(Pool storage map) internal view returns (bytes32[] memory) {
+        return map._challengeNumbers;
     }
     
-    function keys(Pool storage map) internal view returns (uint32[] memory) {
-        uint32[] memory ids = new uint32[](map._values.length);
-        for (uint32 i = 0; i < map._values.length; i++) {
-            ids[i] = map._values[i].id;
+    function masks(Pool storage map) internal view returns (uint256[] memory) {
+        uint256[] memory mask = new uint256[](map._challengeNumbers.length);
+        for (uint32 i = 0; i < map._challengeNumbers.length; i++) {
+            mask[i] = map._masks[map._challengeNumbers[i]];
         }
-        return ids;
-    }
-    
-    function size(Pool storage map) internal view returns (uint256) {
-        return map._values.length;
+        return mask;
     }
     
 }
@@ -103,27 +88,18 @@ contract SimpleERCxxx is ERCxxx {
         _;
     }
 
-    function setMask(uint32 id, uint256 pattern) onlyOwner external {
-        Mask memory m = Mask(id, pattern, keccak256(abi.encodePacked(pattern, blockhash(block.number))));
-        masks.set(id, m);
+    function setMask(uint256 mask) onlyOwner external {
+        bytes32 challengeNumber = keccak256(abi.encodePacked(mask, blockhash(block.number)));
+        masks.set(challengeNumber, mask);
     }
 
-    function removeMask(uint32 id) onlyOwner external {
-        masks.del(id);
+    function removeMask(bytes32 challengeNumber) onlyOwner external {
+        masks.del(challengeNumber);
     }
 
-    function getMaskIDs() external override view returns (uint32[] memory) {
-        return masks.keys();
-    }
 
-    function getMaskByID(uint32 id) external override view returns (Mask memory) {
-        Mask memory m = masks.get(id);
-        require(m.id != 0, "not found");
-        return m;
-    }
-
-    function getMasks() external override view returns (Mask[] memory) {
-        return masks.values();
+    function getMasks() external override view returns (uint256[] memory, bytes32[] memory) {
+        return (masks.masks(), masks.challengeNumbers());
     }
 
     function getNFTsBySender() external view returns (uint256[] memory) {
@@ -134,24 +110,24 @@ contract SimpleERCxxx is ERCxxx {
         return uint256(keccak256(abi.encodePacked(challengeNumber, nonce)));
     }
 
-    function mint(uint32 maskID, uint256 nonce) external override {
+    function mint(bytes32 challengeNumber, uint256 nonce) external override {
 
-        Mask memory m = masks.get(maskID);
-        require(m.id != 0, "mask not found");
+        uint256 m = masks.get(challengeNumber);
+        require(m != 0, "mask not found");
         
         // Calculate NTF
-        uint256 digest = hash(m.challengeNumber, nonce);
+        uint256 digest = hash(challengeNumber, nonce);
 
         // Ensure NFT is not mint already
         require(!nfts.isExists(digest), "already mint by other");
 
         // Match NFT in mask pool
-        require(m.pattern | digest == m.pattern, "not match");
+        require(m | digest == m, "not match");
 
         // Issue NFT to worker
         nfts.issue(msg.sender, digest);
 
         // Emit event
-        emit Mint(msg.sender, digest, m.pattern, m.challengeNumber);
+        emit Mint(msg.sender, digest, m, challengeNumber);
     }
 }

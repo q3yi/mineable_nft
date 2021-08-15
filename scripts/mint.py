@@ -5,10 +5,10 @@ import sha3
 
 from collections import namedtuple
 
-Mask = namedtuple("Mask", "id pattern challenge_number")
+Mask = namedtuple("Mask", "pattern challenge_number")
 
 masks = [
-    Mask(1, 2**240-1, "5687febf410591227276fb47b859d185cc30cbfd06811a2cd9cfd17d041af1af")
+    Mask(2**240-1, "5687febf410591227276fb47b859d185cc30cbfd06811a2cd9cfd17d041af1af")
 ]
 
 def mine():
@@ -24,7 +24,7 @@ def mine():
             digest_number = int.from_bytes(hash_value.digest(), 'big')
 
             if m.pattern | digest_number == m.pattern:
-                return m.id, nonce, hash_value.hexdigest()
+                return m.challenge_number, nonce, hash_value.hexdigest()
 
 if __name__ == '__main__':
     print(mine())
